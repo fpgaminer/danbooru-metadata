@@ -17,6 +17,7 @@ Methodology:
    * For example, tags like "bad_id" are not relavant to the image itself.
    * It's possible to generate a blacklist in an automated way from things like the metatags category (https://danbooru.donmai.us/wiki_pages/tag_group%3Ametatags), but I think manually building the blacklist, though tedious, would be more accurate.
    * I did not blacklist Tag Group: Text tags, since I believe other networks in the pipeline will be able to handle them or infer some useful information from them.
+* Skip tags that have been deprecated.
 * Tag aliases are resolved to their canonical tag.
 * Tag implications are applied.
    * This should help get a better tag usage count for higher order tags.
