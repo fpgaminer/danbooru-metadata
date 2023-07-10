@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-import collections
 import json
+import typing
+from collections import defaultdict
 from itertools import islice
 from pathlib import Path
-from typing import Dict, List, Set, Tuple
+from typing import Any, Dict, List, Set, Tuple
 
-import psycopg2
-import psycopg2.extensions
+import psycopg
 import pyarrow as pa
 import pyarrow.parquet as pq
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 RATING_MAP = {
 	's': 0,
@@ -17,7 +17,7 @@ RATING_MAP = {
 	'e': 2,
 }
 
-PostInfo = collections.namedtuple('RowInfo', ['post_id', 'tags', 'hash', 'score', 'rating'])
+PostInfo = typing.NamedTuple('PostInfo', post_id=int, tags=set, hash=bytes, score=int, rating=int)
 
 # Schema for the metadata file
 schema = pa.schema([
@@ -37,13 +37,14 @@ def main():
 	tag_implications = read_tag_implications()
 	duplicate_groups = read_duplicates()
 	tag_blacklist = read_tag_blacklist()
+	tag_deprecations = read_tag_deprecations()
 
-	# Canonicalize tag implications
+	# Canonicalize tag implications by applying tag aliases
 	tag_implications = {tag_aliases.get(tag, tag): implied_tags for tag, implied_tags in tag_implications.items()}
 	tag_implications = {tag: set(tag_aliases.get(implied_tag, implied_tag) for implied_tag in implied_tags) for tag, implied_tags in tag_implications.items()}
 
 	# Build a metadata dictionary from the database
-	metadata = build_metadata(db, tag_aliases, tag_implications, duplicate_groups, tag_blacklist)
+	metadata = build_metadata(db, tag_aliases, tag_implications, duplicate_groups, tag_blacklist, tag_deprecations)
 
 	# Count tags
 	tag_counts = count_tags(metadata)
@@ -78,7 +79,14 @@ def main():
 	write_metadata_parquet(metadata, top_tags)
 
 
-def build_metadata(db, tag_aliases, tag_implications, duplicate_groups, tag_blacklist) -> Dict[int, PostInfo]:
+def build_metadata(
+	db: psycopg.Connection[Tuple[Any, ...]],
+	tag_aliases: Dict[str, str],
+	tag_implications: dict[str, set[str]],
+	duplicate_groups: list[set[bytes]],
+	tag_blacklist: Set[str],
+	tag_deprecations: set[str]
+) -> Dict[int, PostInfo]:
 	"""
 	Build a metadata dictionary from the database.
 	Each entry in the dictionary is a PostInfo object.
@@ -87,7 +95,8 @@ def build_metadata(db, tag_aliases, tag_implications, duplicate_groups, tag_blac
 	RATING_MAP is used to convert the rating string to an integer.
 	tag_string is split into a set of tags.
 	Tag aliases are applied to canonicalize tags.
-	Tag implications are applied to expand tags and make sure general tags are counted correctly.  For example, "mouse_ears" is an implication of "animal_ears", so if a post has "mouse_ears" it should be counted as having "animal_ears" as well.
+	Tag implications are applied to expand tags and make sure general tags are counted correctly.
+	For example, "mouse_ears" is an implication of "animal_ears", so if a post has "mouse_ears" it should be counted as having "animal_ears" as well.
 	"""
 	hash_to_duplicates_group_id = {hash: i for i, group in enumerate(duplicate_groups) for hash in group}
 
@@ -95,7 +104,9 @@ def build_metadata(db, tag_aliases, tag_implications, duplicate_groups, tag_blac
 	with db.cursor() as cur:
 		# Only count posts with embeddings (this excludes gif posts, for example)
 		cur.execute("SELECT COUNT(*) FROM metadata INNER JOIN embeddings ON metadata.file_hash = embeddings.hash")
-		total_posts, = cur.fetchone()
+		result = cur.fetchone()
+		assert result is not None
+		total_posts, = result
 	
 	group_id_to_post_id = {}
 	metadata = {}
@@ -108,7 +119,7 @@ def build_metadata(db, tag_aliases, tag_implications, duplicate_groups, tag_blac
 			post = PostInfo(
 				post_id=row[0],
 				tags=set(t.strip() for t in row[1].split(' ')),
-				hash=row[2].tobytes(),
+				hash=bytes(row[2]),
 				score=row[3],
 				rating=RATING_MAP[row[4]],
 			)
@@ -123,6 +134,9 @@ def build_metadata(db, tag_aliases, tag_implications, duplicate_groups, tag_blac
 
 			# Remove blacklisted tags
 			post.tags.difference_update(tag_blacklist)
+
+			# Remove deprecated tags
+			post.tags.difference_update(tag_deprecations)
 
 			# Combine the data for duplicates
 			# Groups of duplicate images will be merged into a single entry in metadata
@@ -210,35 +224,44 @@ def write_metadata_parquet(metadata: Dict[int, PostInfo], top_tags: List[str]) -
 			writer.write(batch)
 
 
-def get_db_connection() -> psycopg2.extensions.connection:
-	return psycopg2.connect(host=(Path.cwd() / ".." / "pg-socket").absolute(), database="postgres", user="postgres")
+def get_db_connection() -> psycopg.Connection[Tuple[Any, ...]]:
+	return psycopg.connect("dbname=postgres user=postgres", host=str((Path.cwd() / ".." / "pg-socket").absolute()))
 
 
 def read_tag_aliases() -> Dict[str, str]:
-	"""Returns a dictionary of tag aliases. Given a tag like "ff7" as key, for example, the value would be "final_fantasy_vii"."""
-	aliases = {}
+	"""
+	Returns a mapping based on tag aliases.
+	This maps from aliased tags back to a canonical tag.
+	Given a tag like "ff7" as key, for example, the value would be "final_fantasy_vii".
+	"""
+	aliases = [json.loads(line) for line in open('../metadata/tag_aliases000000000000.json', 'r')]
 
-	with open('../metadata/tag_aliases000000000000.json', 'r') as f:
-		aliases = {}
+	# Uses a set to remove duplicates
+	# This is necessary because the dataset contains a few duplicates (unknown why)
+	# Also only includes active aliases
+	aliases = set((alias['antecedent_name'], alias['consequent_name']) for alias in aliases if alias['status'] == 'active')
 
-		for line in f:
-			alias = json.loads(line)
-			aliases[alias['antecedent_name']] = alias['consequent_name']
+	# Assert that there are no duplicate antecedents or self-aliases
+	assert len(aliases) == len(set(alias[0] for alias in aliases)), "Duplicate antecedents found in tag aliases"
+	assert all(antecedent != consequent for antecedent, consequent in aliases), "Self-aliases found in tag aliases"
+
+	# Create mapping
+	alias_map = {antecedent: consequent for antecedent, consequent in aliases}
+
+	# Check for chains by ensuring that consequents are not also antecedents
+	assert all(consequent not in alias_map for consequent in alias_map.values()), "Chains found in tag aliases"
 	
-	return aliases
+	return alias_map
 
 
 def read_tag_implications() -> Dict[str, Set[str]]:
 	"""Returns a dictionary of tag implications. Given a tag like "mouse_ears" as key, for example, the value would be "animal_ears"."""
-	implications = {}
+	implications = defaultdict(set)
 
 	with open('../metadata/tag_implications000000000000.json', 'r') as f:
 		for line in f:
 			implication = json.loads(line)
 
-			if implication['antecedent_name'] not in implications:
-				implications[implication['antecedent_name']] = set()
-			
 			implications[implication['antecedent_name']].add(implication['consequent_name'])
 	
 	return implications
@@ -247,7 +270,13 @@ def read_tag_implications() -> Dict[str, Set[str]]:
 def read_tag_blacklist() -> Set[str]:
 	"""Returns a set of blacklisted tags."""
 	with open('tag_blacklist.txt', 'r') as f:
-		return set(l.strip() for l in f.read().splitlines() if l.strip() != '')
+		return set(line.strip() for line in f.read().splitlines() if line.strip() != '')
+
+
+def read_tag_deprecations() -> Set[str]:
+	"""Returns a set of deprecated tags."""
+	with open('tag_deprecations.txt', 'r') as f:
+		return set(line.strip() for line in f.read().splitlines() if line.strip() != '')
 
 
 def read_duplicates() -> List[Set[bytes]]:
