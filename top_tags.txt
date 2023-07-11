@@ -1,7 +1,6 @@
 1girl
 solo
 long_hair
-highres
 breasts
 blush
 looking_at_viewer
@@ -31,7 +30,6 @@ dress
 1boy
 ribbon
 long_sleeves
-absurdres
 original
 bow
 2girls
@@ -303,7 +301,6 @@ pubic_hair
 looking_to_the_side
 black_jacket
 no_humans
-lowres
 no_bra
 short_shorts
 parted_bangs
@@ -4301,7 +4298,6 @@ aida_mana
 saenai_heroine_no_sodatekata
 corrin_(fire_emblem)_(female)
 pokemon_sm_(anime)
-incredibly_absurdres
 gradient_sky
 mallet
 shared_scarf
@@ -5998,3 +5994,7 @@ clover_print
 ivan_karelin
 cabinet
 bayonetta
+twitter
+nanase_nao
+ebi_193
+frilled_ribbon

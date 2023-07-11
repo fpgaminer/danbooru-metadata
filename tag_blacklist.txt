@@ -44,3 +44,7 @@ making-of_available
 self_upload
 commissioner_upload
 off-topic
+lowres
+highres
+absurdres
+incredibly_absurdres
