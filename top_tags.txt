@@ -2367,7 +2367,6 @@ body_writing
 orange_shirt
 tifa_lockhart
 frilled_bra
-bad_deviantart_id
 white_eyes
 matou_sakura
 sitting_on_lap
@@ -2475,7 +2474,6 @@ to_love-ru
 hand_on_own_thigh
 grey_pants
 sheet_grab
-bad_tumblr_id
 plaid_shirt
 fireworks
 horn_ribbon
@@ -2514,7 +2512,6 @@ heart_earrings
 white_bodysuit
 facial_tattoo
 trait_connection
-bad_nicoseiga_id
 pillow_hug
 game_controller
 mutsu_(kancolle)
@@ -5998,3 +5995,6 @@ twitter
 nanase_nao
 ebi_193
 frilled_ribbon
+tashkent_(kancolle)
+dinosaur
+ruffling_hair

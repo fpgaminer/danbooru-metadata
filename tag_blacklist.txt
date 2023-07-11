@@ -48,3 +48,6 @@ lowres
 highres
 absurdres
 incredibly_absurdres
+bad_deviantart_id
+bad_tumblr_id
+bad_nicoseiga_id
