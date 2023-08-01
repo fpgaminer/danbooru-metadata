@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from collections import defaultdict
 from dataclasses import dataclass
+from pathlib import Path
 
 from pydantic import BaseModel
 
@@ -39,11 +40,12 @@ class TagMappings:
 	blacklist: set[str]
 	deprecations: set[str]
 
-	def __init__(self):
-		self.aliases = read_tag_aliases()
-		self.implications = read_tag_implications()
-		self.blacklist = read_tag_blacklist()
-		self.deprecations = read_tag_deprecations()
+	def __init__(self, metadata_dir: Path | str):
+		metadata_dir = Path(metadata_dir)
+		self.aliases = read_tag_aliases(metadata_dir)
+		self.implications = read_tag_implications(metadata_dir)
+		self.blacklist = read_tag_blacklist(metadata_dir)
+		self.deprecations = read_tag_deprecations(metadata_dir)
 
 		# Canonicalize tag implications by applying tag aliases
 		self.implications = {
@@ -81,13 +83,13 @@ class TagMappings:
 		return self.implications.get(tag, set())
 
 
-def read_tag_aliases() -> dict[str, str]:
+def read_tag_aliases(metadata_dir: Path) -> dict[str, str]:
 	"""
 	Returns a mapping based on tag aliases.
 	This maps from aliased tags back to a canonical tag.
 	Given a tag like "ff7" as key, for example, the value would be "final_fantasy_vii".
 	"""
-	aliases = [TagAlias.model_validate_json(line) for line in open('../metadata/tag_aliases000000000000.json', 'r')]
+	aliases = [TagAlias.model_validate_json(line) for line in open(metadata_dir / 'tag_aliases000000000000.json', 'r')]
 	alias_map = {}
 
 	for alias in aliases:
@@ -108,11 +110,11 @@ def read_tag_aliases() -> dict[str, str]:
 	return alias_map
 
 
-def read_tag_implications() -> dict[str, set[str]]:
+def read_tag_implications(metadata_dir: Path) -> dict[str, set[str]]:
 	"""Returns a dictionary of tag implications. Given a tag like "mouse_ears" as key, for example, the value would be "animal_ears"."""
 	implications = defaultdict(set)
 
-	with open('../metadata/tag_implications000000000000.json', 'r') as f:
+	with open(metadata_dir / 'tag_implications000000000000.json', 'r') as f:
 		for line in f:
 			implication = TagImplication.model_validate_json(line)
 
@@ -124,15 +126,15 @@ def read_tag_implications() -> dict[str, set[str]]:
 	return implications
 
 
-def read_tag_blacklist() -> set[str]:
+def read_tag_blacklist(metadata_dir: Path) -> set[str]:
 	"""Returns a set of blacklisted tags."""
-	with open('tag_blacklist.txt', 'r') as f:
+	with open(metadata_dir / 'tag_blacklist.txt', 'r') as f:
 		return set(line.strip() for line in f.read().splitlines() if line.strip() != '')
 
 
-def read_tag_deprecations() -> set[str]:
+def read_tag_deprecations(metadata_dir: Path) -> set[str]:
 	"""Returns a set of deprecated tags."""
-	with open('tag_deprecations.txt', 'r') as f:
+	with open(metadata_dir / 'tag_deprecations.txt', 'r') as f:
 		return set(line.strip() for line in f.read().splitlines() if line.strip() != '')
 
 

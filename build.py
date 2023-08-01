@@ -24,7 +24,7 @@ def main():
 	db = get_db_connection()
 
 	print("Reading tag aliases, implications, etc...")
-	tag_mappings = TagMappings()
+	tag_mappings = TagMappings('../metadata')
 	duplicate_groups = read_duplicates()
 
 	# Build a metadata dictionary from the database
