@@ -80,6 +80,7 @@ def build_metadata(
 	For example, "mouse_ears" is an implication of "animal_ears", so if a post has "mouse_ears" it should be counted as having "animal_ears" as well.
 	"""
 	hash_to_duplicates_group_id = {hash: i for i, group in enumerate(duplicate_groups) for hash in group}
+	max_group_id = max(hash_to_duplicates_group_id.values(), default=-1)
 
 	print("Counting posts...")
 	with db.cursor() as cur:
@@ -136,6 +137,11 @@ def build_metadata(
 				group_post.rating = max(group_post.rating, post.rating)
 			else:
 				metadata[post.post_id] = post
+
+				# Create a new duplicate group, to catch exact duplicates
+				max_group_id += 1
+				hash_to_duplicates_group_id[post.hash] = max_group_id
+				group_id_to_post_id[max_group_id] = post.post_id
 	
 	print(f"{total_posts - len(metadata)} duplicate posts removed")
 
